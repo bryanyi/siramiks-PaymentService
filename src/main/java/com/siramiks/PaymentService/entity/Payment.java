@@ -29,7 +29,7 @@ public class Payment {
   @Column(name = "order_id")
   private UUID orderId;
 
-  @Column(name = "cardInfo_id")
+  @Column(name = "card_info_id")
   private UUID cardId;
 
   @CreationTimestamp
@@ -37,19 +37,16 @@ public class Payment {
   private LocalDateTime createdAt;
 
   @Column(name = "payment_total")
-  private long orderPrice;
-
-  @Column(name = "payment_total_quantity")
-  private long orderQuantity;
+  private long totalPayment;
 
   @Column(name = "payment_method")
   private String paymentMethod;
 
-  @Column(name = "stripe_payment_token_id")
-  private String stripePaymentTokenId;
+  @Column(name = "stripe_payment_intent_id")
+  private String stripePaymentIntentId;
 
-  @Column(name = "stripe_charge_id")
-  private String stripeChargeId;
+  @Column(name = "payment_status")
+  private String paymentStatus;
 
   /* will be automatically invoked by the JPA provider before the entity is persisted */
   @PrePersist

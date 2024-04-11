@@ -13,7 +13,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @Builder
 public class NewOrderDetails {
-  private UUID orderId;
   private List<UUID> productIds;
   private long orderPrice;
   private long orderQuantity;

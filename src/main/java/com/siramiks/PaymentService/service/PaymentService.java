@@ -2,32 +2,26 @@ package com.siramiks.PaymentService.service;
 
 import com.siramiks.PaymentService.dto.StripeChargeDto;
 import com.siramiks.PaymentService.dto.StripeTokenDto;
-import com.siramiks.PaymentService.entity.CardInfo;
+import com.siramiks.PaymentService.model.CardInfo;
 import com.siramiks.PaymentService.entity.Payment;
 import com.siramiks.PaymentService.feign.OrderService.OrderService;
-import com.siramiks.PaymentService.model.NewOrderDetails;
-import com.siramiks.PaymentService.model.PaymentRequest;
-import com.siramiks.PaymentService.model.PaymentResponse;
-import com.siramiks.PaymentService.repository.CardInfoRepository;
+import com.siramiks.PaymentService.model.*;
 import com.siramiks.PaymentService.repository.PaymentRepository;
 import com.stripe.Stripe;
 import com.stripe.exception.*;
 import com.stripe.model.Charge;
 import com.stripe.model.PaymentIntent;
-import com.stripe.model.PaymentMethod;
 import com.stripe.model.Token;
 import com.stripe.param.PaymentIntentCreateParams;
-import com.stripe.param.PaymentMethodCreateParams;
-import com.stripe.param.TokenCreateParams;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @Log4j2
@@ -44,12 +38,106 @@ public class PaymentService {
   @Autowired
   private PaymentRepository paymentRepository;
   @Autowired
-  private CardInfoRepository cardInfoRepository;
-  @Autowired
   private OrderService orderService;
 
+  public String createPaymentIntent(StripePaymentRequest stripePaymentRequest) {
+    log.info("PRODUCT SERVICE: fetching payment intent");
+    try {
+      PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+              .setAmount((long) (stripePaymentRequest.getAmount() * 100)) // Convert to cents
+              .setCurrency("usd")
+              .setPaymentMethod(stripePaymentRequest.getPaymentMethodId())
+              .setConfirm(false)
+              .build();
 
-  // Generate a token
+      PaymentIntent paymentIntent = PaymentIntent.create(params);
+      return paymentIntent.getClientSecret();
+    } catch (StripeException e) {
+      throw new RuntimeException("Error creating Stripe payment intent", e);
+    }
+  }
+
+  public void confirmPaymentIntent(String paymentIntentId) {
+    log.info("PRODUCT SERVICE: confirming payment intent");
+    try {
+
+      PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
+      paymentIntent.confirm();
+    } catch (StripeException e) {
+      throw new RuntimeException("Error confirming Stripe payment intent", e);
+    }
+  }
+
+  public PaymentIntent retrievePaymentIntent(String paymentIntentId) {
+    log.info("PRODUCT SERVICE: retieving payment intent");
+    try {
+      return PaymentIntent.retrieve(paymentIntentId);
+    } catch (StripeException e) {
+      throw new RuntimeException("Error retrieving Stripe payment intent", e);
+    }
+  }
+
+  private PaymentIntent processStripePayment(StripePaymentRequest paymentRequest) {
+    try {
+      log.info("fetching client secret...");
+      String clientSecret = this.createPaymentIntent(paymentRequest);
+
+      log.info("client secret received as: {}", clientSecret);
+      log.info("confiirming payment intent...");
+      this.confirmPaymentIntent(clientSecret);
+      log.info("payment intent confirmed!!");
+
+      PaymentIntent paymentIntent = this.retrievePaymentIntent(clientSecret);
+      log.info("fetched payment intent as: {}", paymentIntent);
+
+      return paymentIntent;
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  // TODO - change repsonse type to something more useful for the client
+  public PaymentResponse completeTransaction(PaymentRequest paymentRequest) {
+    // Process with Strip
+    // this.processStripePayment(paymentRequest);
+    String stripePaymentIntentId = "123456789";
+
+    // Create object to store in DB and return for client.
+    UUID orderId = paymentRequest.getOrderId();
+    NewOrderDetails orderDetails = paymentRequest.getNewOrderDetails();
+    StripePaymentRequest stripePaymentRequest = paymentRequest.getStripePaymentRequest();
+    CardInfo cardInfo = paymentRequest.getCardInfo();
+    log.info("COMPLETE TRANSACTION METHOD - paymentRequest: {}", paymentRequest);
+    log.info("COMPLETE TRANSACTION METHOD - orderDetails: {}", orderDetails);
+    log.info("COMPLETE TRANSACTION METHOD - stripePaymentRequest: {}", stripePaymentRequest);
+    log.info("COMPLETE TRANSACTION METHOD - cardInfo: {}", cardInfo);
+
+    String stripePaymentStatus = "SUCCESS";
+    Payment payment = Payment.builder()
+            .orderId(orderId)
+            .cardId(cardInfo.getCardId())
+            .totalPayment(orderDetails.getOrderPrice())
+            .paymentMethod(orderDetails.getPaymentMethod())
+            .stripePaymentIntentId(stripePaymentIntentId)
+            .paymentStatus(stripePaymentStatus)
+            .build();
+
+    log.info("COMPLETE TRANSACTION METHOD - final payment data: {}", payment);
+
+    payment = paymentRepository.save(payment);
+
+    // Create PaymenrResponse for client
+    // UUID uuidPlaceholder = UUID.randomUUID();
+    PaymentResponse paymentResponse = PaymentResponse.builder()
+            .paymentStatus("SUCCESS")
+            .paymentId(payment.getPaymentId())
+            .build();
+
+    return paymentResponse;
+  }
+
+
+  // Integrating Stripe this way didn't work
   public StripeTokenDto createCardToken(StripeTokenDto model) {
     try {
       Map<String, Object> card = new HashMap<>();
@@ -63,7 +151,7 @@ public class PaymentService {
       Token token = Token.create(params);
 
       if (token != null && token.getId() != null) {
-        model.setStatus("true");
+        model.setSuccess(true);
         model.setToken(token.getId());
       }
 
@@ -107,82 +195,80 @@ public class PaymentService {
       throw new RuntimeException(e.getMessage());
     }
   }
-
-
-  public PaymentResponse initTransaction(PaymentRequest paymentRequest) {
-
-    NewOrderDetails orderDetails = paymentRequest.getNewOrderDetails();
-    StripeTokenDto stripeToken = paymentRequest.getStripeToken();
-//    StripeChargeDto stripeCharge = paymentRequest.getStripeCharge();
-
-    log.info("order details in transaction function: {}", orderDetails);
-    log.info("stripe token object from paymentRequest: {}", stripeToken);
-//    log.info("stripe charge object from paymentRequest: {}", stripeCharge);
-
-    // Error handle here? What if stripe payment fails?
-    StripeTokenDto stripeTokenDto = this.createCardToken(stripeToken);
-
-    Map<String, Object> additionalInfo = new HashMap<>();
-    additionalInfo.put("ID_TAG", "123456789");
-    StripeChargeDto stripeCharge = StripeChargeDto.builder()
-            .stripeToken(stripeTokenDto.getToken())
-            .username(stripeTokenDto.getUsername())
-            .amount((double) orderDetails.getOrderPrice())
-            .additionalInfo(additionalInfo)
-            .build();
-    this.charge(stripeCharge);
-
-    log.info("stripe token object from function: {}", stripeTokenDto);
-    log.info("stripe charge object from function: {}", stripeCharge);
-
-    if (stripeTokenDto == null) {
-      log.info("stripe token dto is null!");
-      return null;
-    }
-
-    if (stripeCharge == null) {
-      log.info("stripe charge dto is null!");
-      return null;
-    }
-
-    String cardNumber = stripeTokenDto.getCardNumber();
-    CardInfo cardInfo = cardInfoRepository.findByCardNumber(cardNumber);
-
-    // Store card info if it's not stored in DB
-    if (cardInfo == null) {
-      String expMonth = stripeTokenDto.getExpMonth();
-      String expYear = stripeTokenDto.getExpYear();
-      String cvc = stripeTokenDto.getCvc();
-
-      cardInfo = CardInfo.builder()
-              .cardNumber(cardNumber)
-              .expMonth(expMonth)
-              .expYear(expYear)
-              .cvc(cvc)
-              .build();
-      cardInfo = cardInfoRepository.save(cardInfo);
-    }
-
-    Payment payment = Payment.builder()
-            .orderId(orderDetails.getOrderId())
-            .cardId(cardInfo.getId())
-            .orderPrice(orderDetails.getOrderPrice())
-            .orderQuantity(orderDetails.getOrderQuantity())
-            .paymentMethod(orderDetails.getPaymentMethod())
-            .stripePaymentTokenId(stripeToken.getToken())
-            .stripeChargeId(stripeCharge.getChargeId())
-            .build();
-
-
-    log.info("saving payment...");
-    payment = paymentRepository.save(payment);
-    log.info("payment successfully saved!");
-
-    PaymentResponse paymentResponse = PaymentResponse.builder()
-            .paymentId(payment.getPaymentId())
-            .paymentStatus("SUCCESS")
-            .build();
-
-    return paymentResponse;
-  }
+//  public PaymentResponse initTransaction(PaymentRequest paymentRequest) {
+//
+//    NewOrderDetails orderDetails = paymentRequest.getNewOrderDetails();
+//    StripeTokenDto stripeToken = paymentRequest.getStripeToken();
+////    StripeChargeDto stripeCharge = paymentRequest.getStripeCharge();
+//
+//    log.info("order details in transaction function: {}", orderDetails);
+//    log.info("stripe token object from paymentRequest: {}", stripeToken);
+////    log.info("stripe charge object from paymentRequest: {}", stripeCharge);
+//
+//    // Error handle here? What if stripe payment fails?
+//    StripeTokenDto stripeTokenDto = this.createCardToken(stripeToken);
+//
+//    Map<String, Object> additionalInfo = new HashMap<>();
+//    additionalInfo.put("ID_TAG", "123456789");
+//    StripeChargeDto stripeCharge = StripeChargeDto.builder()
+//            .stripeToken(stripeTokenDto.getToken())
+//            .username(stripeTokenDto.getUsername())
+//            .amount((double) orderDetails.getOrderPrice())
+//            .additionalInfo(additionalInfo)
+//            .build();
+//    this.charge(stripeCharge);
+//
+//    log.info("stripe token object from function: {}", stripeTokenDto);
+//    log.info("stripe charge object from function: {}", stripeCharge);
+//
+//    if (stripeTokenDto == null) {
+//      log.info("stripe token dto is null!");
+//      return null;
+//    }
+//
+//    if (stripeCharge == null) {
+//      log.info("stripe charge dto is null!");
+//      return null;
+//    }
+//
+//    String cardNumber = stripeTokenDto.getCardNumber();
+//    CardInfo cardInfo = cardInfoRepository.findByCardNumber(cardNumber);
+//
+//    // Store card info if it's not stored in DB
+//    if (cardInfo == null) {
+//      String expMonth = stripeTokenDto.getExpMonth();
+//      String expYear = stripeTokenDto.getExpYear();
+//      String cvc = stripeTokenDto.getCvc();
+//
+//      cardInfo = CardInfo.builder()
+//              .cardNumber(cardNumber)
+//              .expMonth(expMonth)
+//              .expYear(expYear)
+//              .cvc(cvc)
+//              .build();
+//      cardInfo = cardInfoRepository.save(cardInfo);
+//    }
+//
+//    Payment payment = Payment.builder()
+//            .orderId(orderDetails.getOrderId())
+//            .cardId(cardInfo.getId())
+//            .orderPrice(orderDetails.getOrderPrice())
+//            .orderQuantity(orderDetails.getOrderQuantity())
+//            .paymentMethod(orderDetails.getPaymentMethod())
+//            .stripePaymentTokenId(stripeToken.getToken())
+//            .stripeChargeId(stripeCharge.getChargeId())
+//            .build();
+//
+//
+//    log.info("saving payment...");
+//    payment = paymentRepository.save(payment);
+//    log.info("payment successfully saved!");
+//
+//    PaymentResponse paymentResponse = PaymentResponse.builder()
+//            .paymentId(payment.getPaymentId())
+//            .paymentStatus("SUCCESS")
+//            .build();
+//
+//    return paymentResponse;
+//  }
 }
