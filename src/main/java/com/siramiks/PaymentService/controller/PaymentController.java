@@ -5,6 +5,7 @@ import com.siramiks.PaymentService.model.PaymentResponse;
 import com.siramiks.PaymentService.model.StripePaymentRequest;
 import com.siramiks.PaymentService.model.TransactionRequest;
 import com.siramiks.PaymentService.service.PaymentService;
+import com.stripe.model.ChargeCollection;
 import com.stripe.model.PaymentIntent;
 import lombok.AllArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -26,7 +27,13 @@ public class PaymentController {
 
   @PostMapping("/completeTransaction")
   public ResponseEntity<PaymentResponse> completeTransaction(@RequestBody PaymentRequest paymentRequest) {
-    return new ResponseEntity<>(paymentService.completeTransaction(paymentRequest), HttpStatus.ACCEPTED);
+    return new ResponseEntity<>(paymentService.completeTransaction(paymentRequest), HttpStatus.OK);
+  }
+
+  @PostMapping("/testStripe")
+  public ResponseEntity<ChargeCollection> testStripeTransaction(@RequestBody StripePaymentRequest stripePaymentRequest) {
+    ChargeCollection charge = paymentService.testStripeTransaction(stripePaymentRequest);
+    return new ResponseEntity<>(charge, HttpStatus.OK);
   }
 
 

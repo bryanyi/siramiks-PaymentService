@@ -10,6 +10,7 @@ import com.siramiks.PaymentService.repository.PaymentRepository;
 import com.stripe.Stripe;
 import com.stripe.exception.*;
 import com.stripe.model.Charge;
+import com.stripe.model.ChargeCollection;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Token;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -40,7 +41,7 @@ public class PaymentService {
   @Autowired
   private OrderService orderService;
 
-  public String createPaymentIntent(StripePaymentRequest stripePaymentRequest) {
+  public PaymentIntent createPaymentIntent(StripePaymentRequest stripePaymentRequest) {
     log.info("PRODUCT SERVICE: fetching payment intent");
     try {
       PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
@@ -51,7 +52,7 @@ public class PaymentService {
               .build();
 
       PaymentIntent paymentIntent = PaymentIntent.create(params);
-      return paymentIntent.getClientSecret();
+      return paymentIntent;
     } catch (StripeException e) {
       throw new RuntimeException("Error creating Stripe payment intent", e);
     }
@@ -80,17 +81,15 @@ public class PaymentService {
   private PaymentIntent processStripePayment(StripePaymentRequest paymentRequest) {
     try {
       log.info("fetching client secret...");
-      String clientSecret = this.createPaymentIntent(paymentRequest);
+      PaymentIntent paymentIntent = this.createPaymentIntent(paymentRequest);
 
-      log.info("client secret received as: {}", clientSecret);
       log.info("confiirming payment intent...");
-      this.confirmPaymentIntent(clientSecret);
+      this.confirmPaymentIntent(paymentIntent.getId());
       log.info("payment intent confirmed!!");
 
-      PaymentIntent paymentIntent = this.retrievePaymentIntent(clientSecret);
-      log.info("fetched payment intent as: {}", paymentIntent);
+      PaymentIntent retrievedPaymentIntent = this.retrievePaymentIntent(paymentIntent.getId());
 
-      return paymentIntent;
+      return retrievedPaymentIntent;
     } catch (RuntimeException e) {
       return null;
     }
@@ -134,6 +133,13 @@ public class PaymentService {
             .build();
 
     return paymentResponse;
+  }
+
+  public ChargeCollection testStripeTransaction(StripePaymentRequest stripePaymentRequest) {
+    PaymentIntent paymentIntent = this.processStripePayment(stripePaymentRequest);
+    assert paymentIntent != null;
+    ChargeCollection chargeCollection = paymentIntent.getCharges();
+    return chargeCollection;
   }
 
 
