@@ -97,19 +97,19 @@ public class PaymentService {
 
   // TODO - change repsonse type to something more useful for the client
   public PaymentResponse completeTransaction(PaymentRequest paymentRequest) {
-    // Process with Strip
-    // this.processStripePayment(paymentRequest);
-    String stripePaymentIntentId = "123456789";
+    // Process payment through stripe
+    log.info("Init stripe payment processing...");
+    PaymentIntent paymentIntent = this.processStripePayment(paymentRequest.getStripePaymentRequest());
+    assert paymentIntent != null;
+    ChargeCollection chargeCollection = paymentIntent.getCharges();
+    String stripePaymentIntentId = paymentIntent.getId();
+    log.info("Stripe payment was successfull!");
 
     // Create object to store in DB and return for client.
     UUID orderId = paymentRequest.getOrderId();
     NewOrderDetails orderDetails = paymentRequest.getNewOrderDetails();
     StripePaymentRequest stripePaymentRequest = paymentRequest.getStripePaymentRequest();
     CardInfo cardInfo = paymentRequest.getCardInfo();
-    log.info("COMPLETE TRANSACTION METHOD - paymentRequest: {}", paymentRequest);
-    log.info("COMPLETE TRANSACTION METHOD - orderDetails: {}", orderDetails);
-    log.info("COMPLETE TRANSACTION METHOD - stripePaymentRequest: {}", stripePaymentRequest);
-    log.info("COMPLETE TRANSACTION METHOD - cardInfo: {}", cardInfo);
 
     String stripePaymentStatus = "SUCCESS";
     Payment payment = Payment.builder()
@@ -124,12 +124,14 @@ public class PaymentService {
     log.info("COMPLETE TRANSACTION METHOD - final payment data: {}", payment);
 
     payment = paymentRepository.save(payment);
+    log.info("TRANSACTION SUCCESSFULLY SAVED", payment);
 
     // Create PaymenrResponse for client
     // UUID uuidPlaceholder = UUID.randomUUID();
     PaymentResponse paymentResponse = PaymentResponse.builder()
             .paymentStatus("SUCCESS")
             .paymentId(payment.getPaymentId())
+            .chargeCollection(chargeCollection)
             .build();
 
     return paymentResponse;

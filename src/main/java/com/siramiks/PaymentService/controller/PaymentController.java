@@ -5,6 +5,7 @@ import com.siramiks.PaymentService.model.PaymentResponse;
 import com.siramiks.PaymentService.model.StripePaymentRequest;
 import com.siramiks.PaymentService.model.TransactionRequest;
 import com.siramiks.PaymentService.service.PaymentService;
+import com.stripe.model.Charge;
 import com.stripe.model.ChargeCollection;
 import com.stripe.model.PaymentIntent;
 import lombok.AllArgsConstructor;
