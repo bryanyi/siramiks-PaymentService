@@ -14,7 +14,7 @@ import java.util.UUID;
 @Builder
 public class NewOrderDetails {
   private List<UUID> productIds;
-  private long orderPrice;
+  private double orderPrice;
   private long orderQuantity;
   private String paymentMethod;
 }

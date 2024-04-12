@@ -18,7 +18,11 @@ import org.springframework.web.bind.annotation.*;
 
 //@CrossOrigin(origins = "https://www.siramiks.bryan.com")
 @RestController
-@RequestMapping("/api/v1/payment")
+@RequestMapping(
+        value = "/api/v1/payment",
+        produces = "application/json",
+        method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
+)
 @AllArgsConstructor
 @Log4j2
 public class PaymentController {

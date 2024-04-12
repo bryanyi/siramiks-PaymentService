@@ -37,7 +37,7 @@ public class Payment {
   private LocalDateTime createdAt;
 
   @Column(name = "payment_total")
-  private long totalPayment;
+  private double totalPayment;
 
   @Column(name = "payment_method")
   private String paymentMethod;
